@@ -1,0 +1,152 @@
+let
+  // ========================
+  // PARAMETERS / NAMED RANGES
+  // ========================
+  Folder        = Excel.CurrentWorkbook(){[Name="PQ_Folder"]}[Content]{0}[Column1],
+  DatesTbl      = Excel.CurrentWorkbook(){[Name="PQ_Dates"]}[Content],
+  DateListRaw   = List.RemoveNulls(Table.Column(DatesTbl, "Column1")),
+  DateListDates = List.RemoveNulls(List.Transform(DateListRaw, each try Date.From(_) otherwise null)),
+
+  HotelCodesTbl = Excel.CurrentWorkbook(){[Name="HotelCodes"]}[Content],
+  AllowedCodes  = List.Transform(List.RemoveNulls(Table.Column(HotelCodesTbl, "Hotel")), each Text.From(_)),
+
+  // ========================
+  // HELPERS
+  // ========================
+  GetHotelCode = (fileName as text) as text =>
+    let
+      chars   = Text.ToList(fileName),
+      leadDig = List.FirstN(chars, each List.Contains({"0".."9"}, _)),
+      topFive = List.FirstN(leadDig, 5),
+      code    = Text.Combine(topFive)
+    in code,
+
+  ReadSheetPromote = (fullPath as text, sheetName as text, skipRows as number) as nullable table =>
+    let
+      bin   = Binary.Buffer(File.Contents(fullPath)),
+      src   = try Excel.Workbook(bin, null, true) otherwise null,
+      item  = if src <> null and List.Contains(Table.Column(src, "Item"), sheetName)
+              then src{[Item=sheetName, Kind="Sheet"]}[Data] else null,
+      step1 = if item = null then null else Table.Skip(item, skipRows),
+      out   = if step1 = null then null else Table.PromoteHeaders(step1, [PromoteAllScalars=true])
+    in out,
+
+  PickDateColumns = (tbl as table) as list =>
+    let
+      cols = Table.ColumnNames(tbl),
+      keep = List.Select(cols, (cn) =>
+               let d = try Date.From(cn) otherwise null
+               in d <> null and List.Contains(DateListDates, d))
+    in keep,
+
+  // -------- Normalize 2025 IS --------
+  NormalizeIS = (tbl as table) as table =>
+  let
+      // short-circuit if empty
+      out0       = if Table.ColumnCount(tbl) = 0 then #table({"Metric","Date","Value"}, {}) else null,
+      names      = if out0 = null then Table.ColumnNames(tbl) else {},
+      targets    = {"ColA","ColB","ColC","ColD"},
+      takeN      = if out0 = null then List.Min({List.Count(names), List.Count(targets)}) else 0,
+      indices    = if out0 = null then List.Numbers(0, takeN) else {},
+      pairs      = if out0 = null then List.Transform(indices, each { names{_}, targets{_} }) else {},
+      renamed    = if out0 = null then Table.RenameColumns(tbl, pairs, MissingField.Ignore) else null,
+
+      dCols      = if out0 = null then PickDateColumns(renamed) else {},
+      base       = if out0 = null then Table.SelectColumns(renamed, List.Union({{"ColA","ColB","ColC","ColD"}, dCols}), MissingField.UseNull) else null,
+
+      unpivot    = if out0 = null then Table.UnpivotOtherColumns(base, {"ColA","ColB","ColC","ColD"}, "DateHeader", "Value") else null,
+
+      addMet     = if out0 = null then
+                    Table.AddColumn(unpivot, "Metric",
+                      each if Text.Trim(Text.From(Record.Field(_, "ColD"))) = "Allocate to Reserve Fund"
+                           then "Allocate to Reserve Fund"
+                           else Text.Trim(Text.From(Record.Field(_, "ColB"))),
+                      type text) else null,
+
+      keepMet    = if out0 = null then Table.SelectRows(addMet, each List.Contains(
+                        {"Gross Operating Profit (Loss)","USALI EBITDA","Allocate to Reserve Fund"}, [Metric])) else null,
+
+      coerceD    = if out0 = null then Table.TransformColumns(keepMet, {{"DateHeader", each try Date.From(_) otherwise null, type date}}) else null,
+      onlyDt     = if out0 = null then Table.SelectRows(coerceD, each [DateHeader] <> null and List.Contains(DateListDates, [DateHeader])) else null,
+
+      coerceN    = if out0 = null then Table.TransformColumns(onlyDt, {{"Value", each try Number.From(_) otherwise null, type number}}) else null,
+      out        = if out0 = null then Table.RenameColumns(Table.SelectColumns(coerceN, {"Metric","DateHeader","Value"}), {{"DateHeader","Date"}}) else out0
+  in out,
+
+  // -------- Normalize 2025 CF --------
+  NormalizeCF = (tbl as table) as table =>
+  let
+      out0       = if Table.ColumnCount(tbl) = 0 then #table({"Metric","Date","Value"}, {}) else null,
+      names      = if out0 = null then Table.ColumnNames(tbl) else {},
+      targets    = {"ColA","ColB","ColC","ColD"},
+      takeN      = if out0 = null then List.Min({List.Count(names), List.Count(targets)}) else 0,
+      indices    = if out0 = null then List.Numbers(0, takeN) else {},
+      pairs      = if out0 = null then List.Transform(indices, each { names{_}, targets{_} }) else {},
+      renamed    = if out0 = null then Table.RenameColumns(tbl, pairs, MissingField.Ignore) else null,
+
+      dCols      = if out0 = null then PickDateColumns(renamed) else {},
+      base       = if out0 = null then Table.SelectColumns(renamed, List.Union({{"ColA","ColB","ColC","ColD"}, dCols}), MissingField.UseNull) else null,
+
+      unpivot    = if out0 = null then Table.UnpivotOtherColumns(base, {"ColA","ColB","ColC","ColD"}, "DateHeader", "Value") else null,
+
+      addMet     = if out0 = null then Table.AddColumn(unpivot, "Metric", each Text.Trim(Text.From(Record.Field(_, "ColC"))), type text) else null,
+
+      keepMet    = if out0 = null then Table.SelectRows(addMet, each List.Contains(
+                        {"Debt Service","Cash Generated (Used) After Debt Service"}, [Metric])) else null,
+
+      coerceD    = if out0 = null then Table.TransformColumns(keepMet, {{"DateHeader", each try Date.From(_) otherwise null, type date}}) else null,
+      onlyDt     = if out0 = null then Table.SelectRows(coerceD, each [DateHeader] <> null and List.Contains(DateListDates, [DateHeader])) else null,
+
+      coerceN    = if out0 = null then Table.TransformColumns(onlyDt, {{"Value", each try Number.From(_) otherwise null, type number}}) else null,
+      out        = if out0 = null then Table.RenameColumns(Table.SelectColumns(coerceN, {"Metric","DateHeader","Value"}), {{"DateHeader","Date"}}) else out0
+  in out,
+
+  // Process one workbook → Long table with Hotel code
+  ProcessFile = (fullPath as text, fileName as text) as table =>
+  let
+      isTbl = ReadSheetPromote(fullPath, "2025 IS", 4),
+      cfTbl = ReadSheetPromote(fullPath, "2025 CF", 4),
+
+      isN   = if (isTbl <> null and Value.Is(isTbl, type table) and Table.ColumnCount(isTbl) > 0) then NormalizeIS(isTbl) else #table({"Metric","Date","Value"}, {}),
+      cfN   = if (cfTbl <> null and Value.Is(cfTbl, type table) and Table.ColumnCount(cfTbl) > 0) then NormalizeCF(cfTbl) else #table({"Metric","Date","Value"}, {}),
+
+      both  = Table.Combine({isN, cfN}),
+      withH = Table.AddColumn(both, "Hotel", each GetHotelCode(fileName), type text),
+
+      cols  = {"Hotel","Metric","Date","Value"},
+      final = Table.ReorderColumns(Table.SelectColumns(withH, cols, MissingField.Ignore), cols)
+  in final,
+
+  // ========================
+  // TOP-LEVEL FOLDER ONLY (ignore subfolders)
+  // ========================
+  topLevel   = Folder.Contents(Folder),
+  // keep only FILE rows (not directories) and only Excel extensions
+  filesOnly  = Table.SelectRows(topLevel, each Record.FieldOrDefault([Attributes], "Directory", false) = false),
+  xlsOnly    = Table.SelectRows(filesOnly, each Text.EndsWith(Text.Lower([Extension]), ".xlsx") or Text.EndsWith(Text.Lower([Extension]), ".xlsm")),
+  xlsSlim    = Table.SelectColumns(xlsOnly, {"Folder Path","Name","Extension","Date modified","Attributes","Content"}),
+
+  withCode   = Table.AddColumn(xlsSlim, "Hotel", each GetHotelCode([Name]), type text),
+  onlyAllow  = Table.SelectRows(withCode, each List.Contains(AllowedCodes, [Hotel]) and Text.Length([Hotel]) >= 4),
+
+  processed  = Table.AddColumn(onlyAllow, "Data", each ProcessFile([Folder Path] & [Name], [Name])),
+  combined   = Table.Combine(List.RemoveNulls(processed[Data])),
+
+  // ========================
+  // LONG + WIDE TABLES
+  // ========================
+  Hotels_Metrics_2025_Long =
+      Table.TransformColumnTypes(combined, {
+          {"Hotel", type text}, {"Metric", type text}, {"Date", type date}, {"Value", type number}
+      }),
+
+  addDateText = Table.TransformColumns(Hotels_Metrics_2025_Long, {{"Date", each Date.ToText(_, "m/d/yyyy"), type text}}),
+  pivoted     = Table.Pivot(addDateText, List.Distinct(addDateText[Date]), "Date", "Value", List.Sum),
+
+  orderList   = {"Gross Operating Profit (Loss)","USALI EBITDA","Debt Service","Allocate to Reserve Fund","Cash Generated (Used) After Debt Service"},
+  addOrder    = Table.AddColumn(pivoted, "_o", each let p = List.PositionOf(orderList, [Metric]) in if p < 0 then 999 else p),
+  wideSorted  = Table.Sort(addOrder, {{"Hotel", Order.Ascending},{"_o", Order.Ascending}}),
+  Hotels_Metrics_2025_Wide = Table.RemoveColumns(wideSorted, {"_o"})
+in
+  // Return WIDE by default; duplicate and switch 'in' to Hotels_Metrics_2025_Long if you want the long table too.
+  Hotels_Metrics_2025_Wide
