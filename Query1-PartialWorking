@@ -154,6 +154,10 @@ let
   withCode   = Table.AddColumn(xlsSlim, "Hotel", each GetHotelCode([Name]), type text),
   onlyAllow  = Table.SelectRows(withCode, each List.Contains(AllowedCodes, [Hotel]) and Text.Length([Hotel]) >= 4),
 
+  hotelFileRaw  = Table.SelectColumns(onlyAllow, {"Hotel","Folder Path","Name"}, MissingField.Ignore),
+  hotelFilePath = Table.AddColumn(hotelFileRaw, "File Path", each Text.From(Record.FieldOrDefault(_, "Folder Path", "")) & Text.From(Record.FieldOrDefault(_, "Name", "")), type text),
+  HotelFilePathsTbl = Table.Sort(Table.Distinct(Table.SelectColumns(hotelFilePath, {"Hotel","File Path"}, MissingField.Ignore)), {{"Hotel", Order.Ascending}}),
+
   processed  = Table.AddColumn(onlyAllow, "Data", each ProcessFile([Folder Path] & [Name], [Name])),
   combined   = Table.Combine(List.RemoveNulls(processed[Data])),
 
@@ -171,7 +175,8 @@ let
   orderList   = {"Gross Operating Profit (Loss)","USALI EBITDA","Debt Service","Allocate to Reserve Fund","Cash Generated (Used) After Debt Service"},
   addOrder    = Table.AddColumn(pivoted, "_o", each let p = List.PositionOf(orderList, [Metric]) in if p < 0 then 999 else p),
   wideSorted  = Table.Sort(addOrder, {{"Hotel", Order.Ascending},{"_o", Order.Ascending}}),
-  Hotels_Metrics_2025_Wide = Table.RemoveColumns(wideSorted, {"_o"})
+  Hotels_Metrics_2025_Wide = Table.RemoveColumns(wideSorted, {"_o"}),
+  Output = Value.ReplaceMetadata(Hotels_Metrics_2025_Wide, Value.Metadata(Hotels_Metrics_2025_Wide) & [HotelFilePaths = HotelFilePathsTbl])
 in
   // Return WIDE by default; duplicate and switch 'in' to Hotels_Metrics_2025_Long if you want the long table too.
-  Hotels_Metrics_2025_Wide
+  Output

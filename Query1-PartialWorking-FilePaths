@@ -1,0 +1,10 @@
+let
+  Source = #"Query1-PartialWorking",
+  metaTry = try Value.Metadata(Source),
+  meta    = if metaTry[HasError] then [] else metaTry[Value],
+  hasTbl  = if Value.Is(meta, type record) then Record.HasFields(meta, {"HotelFilePaths"}) else false,
+  rawTbl  = if hasTbl then meta[HotelFilePaths] else #table({"Hotel","File Path"}, {}),
+  typed   = Table.TransformColumnTypes(rawTbl, {{"Hotel", type text}, {"File Path", type text}}),
+  sorted  = Table.Sort(typed, {{"Hotel", Order.Ascending}})
+in
+  sorted
