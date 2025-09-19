@@ -4,8 +4,7 @@ let
   // ========================
   Folder        = Excel.CurrentWorkbook(){[Name="PQ_Folder"]}[Content]{0}[Column1],
   DatesTbl      = Excel.CurrentWorkbook(){[Name="PQ_Dates"]}[Content],
-  DateListRaw   = List.RemoveNulls(Table.Column(DatesTbl, "Column1")),
-  DateListDates = List.RemoveNulls(List.Transform(DateListRaw, each try Date.From(_) otherwise null)),
+  DateListRaw   = List.RemoveNulls(List.Combine(Table.ToColumns(DatesTbl))),
 
   HotelCodesTbl = Excel.CurrentWorkbook(){[Name="HotelCodes"]}[Content],
   AllowedCodes  = List.Transform(List.RemoveNulls(Table.Column(HotelCodesTbl, "Hotel")), each Text.From(_)),
@@ -13,6 +12,16 @@ let
   // ========================
   // HELPERS
   // ========================
+  ParseDateAny = (x as any) as nullable date =>
+    let
+      d1 = try if Value.Is(x, type date) then x else null otherwise null,
+      d2 = if d1 <> null then d1 else (try if Value.Is(x, type number) then Date.From(x) else null otherwise null),
+      d3 = if d2 <> null then d2 else (try Date.FromText(Text.From(x), "en-US") otherwise null),
+      d4 = if d3 <> null then d3 else (try Date.From(DateTime.FromText(Text.From(x), "en-US")) otherwise null)
+    in d4,
+
+  DateListDates = List.Distinct(List.RemoveNulls(List.Transform(DateListRaw, each ParseDateAny(_)))),
+
   GetHotelCode = (fileName as text) as text =>
     let
       chars   = Text.ToList(fileName),
@@ -35,7 +44,7 @@ let
     let
       cols = Table.ColumnNames(tbl),
       keep = List.Select(cols, (cn) =>
-               let d = try Date.From(cn) otherwise null
+               let d = ParseDateAny(cn)
                in d <> null and List.Contains(DateListDates, d))
     in keep,
 
@@ -66,7 +75,7 @@ let
       keepMet    = if out0 = null then Table.SelectRows(addMet, each List.Contains(
                         {"Gross Operating Profit (Loss)","USALI EBITDA","Allocate to Reserve Fund"}, [Metric])) else null,
 
-      coerceD    = if out0 = null then Table.TransformColumns(keepMet, {{"DateHeader", each try Date.From(_) otherwise null, type date}}) else null,
+      coerceD    = if out0 = null then Table.TransformColumns(keepMet, {{"DateHeader", each ParseDateAny(_), type date}}) else null,
       onlyDt     = if out0 = null then Table.SelectRows(coerceD, each [DateHeader] <> null and List.Contains(DateListDates, [DateHeader])) else null,
 
       coerceN    = if out0 = null then Table.TransformColumns(onlyDt, {{"Value", each try Number.From(_) otherwise null, type number}}) else null,
@@ -94,7 +103,7 @@ let
       keepMet    = if out0 = null then Table.SelectRows(addMet, each List.Contains(
                         {"Debt Service","Cash Generated (Used) After Debt Service"}, [Metric])) else null,
 
-      coerceD    = if out0 = null then Table.TransformColumns(keepMet, {{"DateHeader", each try Date.From(_) otherwise null, type date}}) else null,
+      coerceD    = if out0 = null then Table.TransformColumns(keepMet, {{"DateHeader", each ParseDateAny(_), type date}}) else null,
       onlyDt     = if out0 = null then Table.SelectRows(coerceD, each [DateHeader] <> null and List.Contains(DateListDates, [DateHeader])) else null,
 
       coerceN    = if out0 = null then Table.TransformColumns(onlyDt, {{"Value", each try Number.From(_) otherwise null, type number}}) else null,
