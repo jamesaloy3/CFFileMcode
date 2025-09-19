@@ -105,10 +105,11 @@ let
                         type text),
 
             // Keep only needed IS metrics (null-safe)
-            keepMet = Table.SelectRows(addMet, each
-                        let m = Record.FieldOrDefault(_, "Metric", null)
-                        in m <> null and List.Contains(
-                             {"Gross Operating Profit (Loss)","USALI EBITDA","Allocate to Reserve Fund"}, m)
+            keepMet = Table.SelectRows(
+                        addMet,
+                        each let m = Record.FieldOrDefault(_, "Metric", null)
+                             in if m = null then false else List.Contains(
+                                  {"Gross Operating Profit (Loss)","USALI EBITDA","Allocate to Reserve Fund"}, m)
                       ),
 
             // Coerce to dates, then keep only target dates (always return logical)
@@ -153,10 +154,11 @@ let
             addMet  = Table.AddColumn(unpivot, "Metric",
                         each Text.Trim(Text.From(Record.FieldOrDefault(_, "ColC", ""))), type text),
 
-            keepMet = Table.SelectRows(addMet, each
-                        let m = Record.FieldOrDefault(_, "Metric", null)
-                        in m <> null and List.Contains(
-                             {"Debt Service","Cash Generated (Used) After Debt Service"}, m)
+            keepMet = Table.SelectRows(
+                        addMet,
+                        each let m = Record.FieldOrDefault(_, "Metric", null)
+                             in if m = null then false else List.Contains(
+                                  {"Debt Service","Cash Generated (Used) After Debt Service"}, m)
                       ),
 
             coerceD = Table.TransformColumns(keepMet, {{"DateHeader", each ParseDateAny(_), type date}}),
