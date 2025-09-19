@@ -48,6 +48,26 @@ let
                in d <> null and List.Contains(DateListDates, d))
     in keep,
 
+  NormalizeMetricText = (txt as any) as text =>
+    let
+      raw   = if txt = null then "" else Text.From(txt),
+      upper = Text.Upper(Text.Trim(raw))
+    in upper,
+
+  ExtractMetric = (rec as record, metricMap as list) as nullable text =>
+    let
+      columnsToScan = {"ColA","ColB","ColC","ColD"},
+      rawValues     = List.Transform(columnsToScan, each NormalizeMetricText(Record.FieldOrDefault(rec, _, null))),
+      matches       = List.Select(metricMap, (m) => List.Contains(rawValues, m[Match])),
+      result        = if List.Count(matches) > 0 then matches{0}[Name] else null
+    in result,
+
+  MetricMapIS = {
+    [Match = "GROSS OPERATING PROFIT (LOSS)", Name = "Gross Operating Profit (Loss)"],
+    [Match = "USALI EBITDA", Name = "USALI EBITDA"],
+    [Match = "ALLOCATE TO RESERVE FUND", Name = "Allocate to Reserve Fund"]
+  },
+
   // -------- Normalize 2025 IS --------
   NormalizeIS = (tbl as table) as table =>
   let
@@ -66,14 +86,9 @@ let
       unpivot    = if out0 = null then Table.UnpivotOtherColumns(base, {"ColA","ColB","ColC","ColD"}, "DateHeader", "Value") else null,
 
       addMet     = if out0 = null then
-                    Table.AddColumn(unpivot, "Metric",
-                      each if Text.Trim(Text.From(Record.Field(_, "ColD"))) = "Allocate to Reserve Fund"
-                           then "Allocate to Reserve Fund"
-                           else Text.Trim(Text.From(Record.Field(_, "ColB"))),
-                      type text) else null,
+                    Table.AddColumn(unpivot, "Metric", each ExtractMetric(_, MetricMapIS), type nullable text) else null,
 
-      keepMet    = if out0 = null then Table.SelectRows(addMet, each List.Contains(
-                        {"Gross Operating Profit (Loss)","USALI EBITDA","Allocate to Reserve Fund"}, [Metric])) else null,
+      keepMet    = if out0 = null then Table.SelectRows(addMet, each [Metric] <> null) else null,
 
       coerceD    = if out0 = null then Table.TransformColumns(keepMet, {{"DateHeader", each ParseDateAny(_), type date}}) else null,
       onlyDt     = if out0 = null then Table.SelectRows(coerceD, each [DateHeader] <> null and List.Contains(DateListDates, [DateHeader])) else null,
