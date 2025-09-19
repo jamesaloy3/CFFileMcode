@@ -162,21 +162,13 @@ let
   combined   = Table.Combine(List.RemoveNulls(processed[Data])),
 
   // ========================
-  // LONG + WIDE TABLES
+  // LONG TABLE OUTPUT
   // ========================
   Hotels_Metrics_2025_Long =
       Table.TransformColumnTypes(combined, {
           {"Hotel", type text}, {"Metric", type text}, {"Date", type date}, {"Value", type number}
       }),
 
-  addDateText = Table.TransformColumns(Hotels_Metrics_2025_Long, {{"Date", each Date.ToText(_, "m/d/yyyy"), type text}}),
-  pivoted     = Table.Pivot(addDateText, List.Distinct(addDateText[Date]), "Date", "Value", List.Sum),
-
-  orderList   = {"Gross Operating Profit (Loss)","USALI EBITDA","Debt Service","Allocate to Reserve Fund","Cash Generated (Used) After Debt Service"},
-  addOrder    = Table.AddColumn(pivoted, "_o", each let p = List.PositionOf(orderList, [Metric]) in if p < 0 then 999 else p),
-  wideSorted  = Table.Sort(addOrder, {{"Hotel", Order.Ascending},{"_o", Order.Ascending}}),
-  Hotels_Metrics_2025_Wide = Table.RemoveColumns(wideSorted, {"_o"}),
-  Output = Value.ReplaceMetadata(Hotels_Metrics_2025_Wide, Value.Metadata(Hotels_Metrics_2025_Wide) & [HotelFilePaths = HotelFilePathsTbl])
+  Output = Value.ReplaceMetadata(Hotels_Metrics_2025_Long, Value.Metadata(Hotels_Metrics_2025_Long) & [HotelFilePaths = HotelFilePathsTbl])
 in
-  // Return WIDE by default; duplicate and switch 'in' to Hotels_Metrics_2025_Long if you want the long table too.
   Output
