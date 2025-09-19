@@ -61,7 +61,11 @@ let
   // -------- Normalize 2025 IS --------
   NormalizeIS = (tbl as nullable table) as table =>
     let
-      isNullOrEmpty = tbl = null or (try Table.ColumnCount(tbl) otherwise 0) = 0,
+      colCount = if tbl = null then null else try Table.ColumnCount(tbl) otherwise null,
+      isNullOrEmpty =
+        if tbl = null then true
+        else if colCount = null then true
+        else colCount = 0,
       result =
         if isNullOrEmpty then
           #table({"Metric","Date","Value"}, {})
@@ -127,7 +131,11 @@ let
   // -------- Normalize 2025 CF --------
   NormalizeCF = (tbl as nullable table) as table =>
     let
-      isNullOrEmpty = tbl = null or (try Table.ColumnCount(tbl) otherwise 0) = 0,
+      colCount = if tbl = null then null else try Table.ColumnCount(tbl) otherwise null,
+      isNullOrEmpty =
+        if tbl = null then true
+        else if colCount = null then true
+        else colCount = 0,
       result =
         if isNullOrEmpty then
           #table({"Metric","Date","Value"}, {})
