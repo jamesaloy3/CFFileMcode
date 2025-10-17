@@ -73,11 +73,12 @@ let
   let
       // short-circuit if empty
       out0       = if Table.ColumnCount(tbl) = 0 then #table({"Metric","Date","Value"}, {}) else null,
-      names      = if out0 = null then Table.ColumnNames(tbl) else {},
+      namesRaw   = if out0 = null then Table.ColumnNames(tbl) else {},
       targets    = {"ColA","ColB","ColC","ColD"},
-      takeN      = if out0 = null then List.Min({List.Count(names), List.Count(targets)}) else 0,
-      indices    = if out0 = null then List.Numbers(0, takeN) else {},
-      pairs      = if out0 = null then List.Transform(indices, each { names{_}, targets{_} }) else {},
+      takeN      = if out0 = null then List.Min({List.Count(namesRaw), List.Count(targets)}) else 0,
+      names      = if out0 = null then List.FirstN(namesRaw, takeN) else {},
+      targetTake = if out0 = null then List.FirstN(targets, takeN) else {},
+      pairs      = if out0 = null then List.Zip({names, targetTake}) else {},
       renamed    = if out0 = null then Table.RenameColumns(tbl, pairs, MissingField.Ignore) else null,
 
       dCols      = if out0 = null then PickDateColumns(renamed) else {},
